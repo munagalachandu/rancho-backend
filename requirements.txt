@@ -6,3 +6,7 @@ langchain_huggingface
 sentence-transformers
 faiss-cpu
 tf-keras
+uvicorn[standard]
+fastapi
+pydantic
+motor
