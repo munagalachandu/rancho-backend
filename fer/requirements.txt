@@ -1,0 +1,6 @@
+flask
+flask-cors
+opencv-python-headless
+numpy
+fer
+moviepy
