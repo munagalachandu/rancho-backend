@@ -5,30 +5,67 @@ import cv2
 import numpy as np
 from fer import FER
 import logging
+import os
 
 app = Flask(__name__)
 
-CORS(app, resources={r"/*": {"origins": ["http://localhost:8081", "http://127.0.0.1:8081"]}}, supports_credentials=True)
- # Enable CORS for frontend communication
+# Production-friendly CORS configuration
+# Allow all origins in production or specify your frontend URLs
+CORS(app, 
+     resources={r"/*": {"origins": "*"}},  # Allow all origins for mobile apps
+     supports_credentials=True,
+     methods=["GET", "POST", "OPTIONS"],
+     allow_headers=["Content-Type", "Authorization"])
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Load the FER model
-detector = FER(mtcnn=True)
+# Initialize FER model (lazy loading for faster startup)
+detector = None
+
+def get_detector():
+    """Lazy load the FER model"""
+    global detector
+    if detector is None:
+        logger.info("Loading FER model...")
+        detector = FER(mtcnn=True)
+        logger.info("FER model loaded successfully")
+    return detector
+
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint"""
+    return jsonify({
+        "message": "Emotion Detection API",
+        "version": "1.0.0",
+        "endpoints": {
+            "/health": "Health check",
+            "/detect_emotion": "POST - Detect emotion from image"
+        }
+    }), 200
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
-    return jsonify({"status": "healthy", "message": "Emotion detection API is running"}), 200
+    return jsonify({
+        "status": "healthy",
+        "message": "Emotion detection API is running"
+    }), 200
 
-@app.route('/detect_emotion', methods=['POST'])
+@app.route('/detect_emotion', methods=['POST', 'OPTIONS'])
 def detect_emotion():
     """
     Endpoint to detect emotion from an image
     Expects JSON with base64 encoded image
     """
+    # Handle preflight OPTIONS request
+    if request.method == 'OPTIONS':
+        return '', 204
+    
     try:
         data = request.get_json()
         
@@ -56,13 +93,16 @@ def detect_emotion():
         
         logger.info("Image decoded successfully. Shape: %s", img.shape)
         
+        # Get detector instance
+        fer_detector = get_detector()
+        
         # Detect emotions
-        result = detector.detect_emotions(img)
+        result = fer_detector.detect_emotions(img)
         logger.info("Detection result length: %d", len(result))
         
         if result and len(result) > 0:
             # Get top emotion
-            top_emotion, score = detector.top_emotion(img)
+            top_emotion, score = fer_detector.top_emotion(img)
             
             # Get all emotions for the first face
             all_emotions = result[0]['emotions']
@@ -93,7 +133,19 @@ def detect_emotion():
         logger.error("Error during processing: %s", str(e))
         return jsonify({"error": str(e)}), 500
 
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal server error"}), 500
+
 if __name__ == '__main__':
-    # For production, use a proper WSGI server like gunicorn
-    # gunicorn -w 4 -b 0.0.0.0:5000 app:app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Get port from environment variable or default to 5000
+    port = int(os.environ.get('PORT', 5000))
+    
+    # In production, Render will use gunicorn, so debug should be False
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
