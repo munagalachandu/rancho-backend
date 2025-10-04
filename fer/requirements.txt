@@ -3,4 +3,4 @@ flask-cors
 opencv-python-headless
 numpy
 fer
-moviepy
+moviepy==1.0.3
