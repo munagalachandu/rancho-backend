@@ -633,4 +633,108 @@ for seq_len in seq_lengths:
     loss = model.evaluate(X_test, y_test, verbose=0)
     print("Test Loss:", loss)
 
-#########################################################################3
+#########################################################################
+
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+from tensorflow.keras import layers, models
+
+# ================= SETTINGS =================
+MODE = "adam"        # sgd, momentum, rmsprop, adam, nadam
+INIT = "he"          # zeros, random, xavier, he
+GD_TYPE = "mini"     # batch, mini, stochastic
+TASK = "classification"  # classification / regression
+# ===========================================
+
+# ---------- DATA ----------
+if TASK == "classification":
+    (X_train, y_train), (X_test, y_test) = tf.keras.datasets.mnist.load_data()
+    X_train, X_test = X_train/255.0, X_test/255.0
+    X_train = X_train[..., np.newaxis]
+    X_test = X_test[..., np.newaxis]
+else:
+    X = np.random.rand(1000,1)
+    y = 3*X + np.random.randn(1000,1)*0.1
+    X_train, X_test = X[:800], X[800:]
+    y_train, y_test = y[:800], y[800:]
+
+# ---------- INITIALIZATION ----------
+def get_init():
+    if INIT == "zeros": return tf.keras.initializers.Zeros()
+    if INIT == "random": return tf.keras.initializers.RandomNormal()
+    if INIT == "xavier": return tf.keras.initializers.GlorotUniform()
+    if INIT == "he": return tf.keras.initializers.HeNormal()
+
+init = get_init()
+
+# ---------- MODEL ----------
+if TASK == "classification":
+    model = models.Sequential([
+        layers.Conv2D(32, 3, activation='relu', kernel_initializer=init, input_shape=(28,28,1)),
+        layers.MaxPooling2D(2),
+        layers.Flatten(),
+        layers.Dense(64, activation='relu', kernel_initializer=init),
+        layers.Dense(10, activation='softmax')
+    ])
+else:
+    model = models.Sequential([
+        layers.Dense(32, activation='relu', kernel_initializer=init, input_shape=(1,)),
+        layers.Dense(1)
+    ])
+
+# ---------- OPTIMIZER ----------
+def get_optimizer():
+    if MODE == "sgd":
+        return tf.keras.optimizers.SGD()
+    if MODE == "momentum":
+        return tf.keras.optimizers.SGD(momentum=0.9)
+    if MODE == "rmsprop":
+        return tf.keras.optimizers.RMSprop()
+    if MODE == "adam":
+        return tf.keras.optimizers.Adam()
+    if MODE == "nadam":
+        return tf.keras.optimizers.Nadam()
+
+opt = get_optimizer()
+
+# ---------- LOSS ----------
+if TASK == "classification":
+    loss = "sparse_categorical_crossentropy"
+else:
+    loss = "mse"
+
+model.compile(optimizer=opt, loss=loss, metrics=["accuracy"] if TASK=="classification" else [])
+
+# ---------- GD TYPE ----------
+batch_size = {
+    "batch": len(X_train),
+    "mini": 32,
+    "stochastic": 1
+}[GD_TYPE]
+
+# ---------- TRAIN ----------
+history = model.fit(
+    X_train, y_train,
+    epochs=5,
+    batch_size=batch_size,
+    validation_data=(X_test, y_test),
+    verbose=1
+)
+
+# ---------- EVALUATE ----------
+print("\nTest Results:")
+model.evaluate(X_test, y_test)
+
+# ---------- VISUALIZE LOSS ----------
+plt.plot(history.history['loss'], label="Train Loss")
+plt.plot(history.history['val_loss'], label="Val Loss")
+plt.legend()
+plt.title(f"{MODE} | {INIT} | {GD_TYPE}")
+plt.show()
+
+# ---------- WEIGHT DISTRIBUTION ----------
+weights = model.layers[0].get_weights()[0].flatten()
+plt.hist(weights, bins=50)
+plt.title("Weight Distribution")
+plt.show()
