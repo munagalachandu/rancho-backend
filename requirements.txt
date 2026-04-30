@@ -10,3 +10,412 @@ uvicorn[standard]
 fastapi
 pydantic
 motor
+
+HDFS INSTALLATION
+Hadoop Single Node Commands
+
+
+sudo apt update
+sudo apt install ssh
+sudo apt install pdsh
+
+nano .bashrc
+export PDSH_RCMD_TYPE=ssh
+
+ssh-keygen -t rsa -P ""
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+ssh localhost
+
+sudo apt install openjdk-8-jdk
+java -version
+
+sudo wget -P ~ https://archive.apache.org/dist/hadoop/common/hadoop-3.2.1/hadoop-3.2.1.tar.gz
+tar xzf hadoop-3.2.1.tar.gz
+mv hadoop-3.2.1 hadoop
+
+nano ~/hadoop/etc/hadoop/hadoop-env.sh
+
+Goes in Hadoop-env.sh
+
+    export JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64/
+
+
+sudo mv hadoop /usr/local/hadoop
+
+sudo nano /etc/environment
+
+    PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/local/hadoop/bin:/usr/local/hadoop/sbin"JAVA_HOME="/usr/lib/jvm/java-8-openjdk-amd64/jre"
+
+
+sudo adduser hadoopuser
+sudo usermod -aG hadoopuser hadoopuser
+sudo chown hadoopuser:root -R /usr/local/hadoop/
+sudo chmod g+rwx -R /usr/local/hadoop/
+sudo adduser hadoopuser sudo
+
+
+sudo nano /etc/hosts
+sudo nano /etc/hostname
+sudo reboot
+
+
+su - hadoopuser
+ssh-keygen -t rsa
+
+
+ssh-copy-id hadoopuser@hadoop-master
+
+
+sudo nano /usr/local/hadoop/etc/hadoop/core-site.xml
+
+
+<configuration>
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://localhost:9000</value>
+    </property>
+    <property>
+        <name>hadoop.tmp.dir</name>
+        <value>/usr/local/hadoop</value>
+    </property>
+</configuration>
+
+
+sudo nano /usr/local/hadoop/etc/hadoop/hdfs-site.xml
+
+
+<configuration>
+    <property>
+        <name>dfs.replication</name>
+        <value>1</value>
+    </property>
+</configuration>
+
+
+
+
+sudo nano /usr/local/hadoop/etc/hadoop/mapred-site.xml
+
+
+<configuration>
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+    </property>
+    <property>
+        <name>yarn.app.mapreduce.am.env</name>
+        <value>HADOOP_MAPRED_HOME=/usr/local/hadoop</value>
+    </property>
+    <property>
+        <name>mapreduce.map.env</name>
+        <value>HADOOP_MAPRED_HOME=/usr/local/hadoop</value>
+    </property>
+    <property>
+        <name>mapreduce.reduce.env</name>
+        <value>HADOOP_MAPRED_HOME=/usr/local/hadoop</value>
+    </property>
+</configuration>
+
+
+
+source /etc/environment
+hdfs namenode -format
+
+
+start-dfs.sh
+
+
+nano .bashrc
+
+
+export HADOOP_HOME="/usr/local/hadoop"
+export HADOOP_COMMON_HOME=$HADOOP_HOME
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export HADOOP_HDFS_HOME=$HADOOP_HOME
+export HADOOP_MAPRED_HOME=$HADOOP_HOME
+export HADOOP_YARN_HOME=$HADOOP_HOME
+
+source ~/.bashrc
+
+
+sudo nano /usr/local/hadoop/etc/hadoop/yarn-site.xml
+
+
+<configuration>
+<property>
+<name>yarn.nodemanager.aux-services</name>
+<value>mapreduce_shuffle</value>
+</property>
+<property>
+<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+</property>
+</configuration>
+
+
+start-yarn.sh
+
+
+sudo apt remove pdsh
+
+
+cd /usr/local/hadoop/sbin
+./start-all.sh
+
+
+MAPREDUCE 
+WCDRIVER
+import java.io.IOException;
+
+import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.Path;
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+
+import org.apache.hadoop.mapred.FileInputFormat;
+import org.apache.hadoop.mapred.FileOutputFormat;
+
+import org.apache.hadoop.mapred.JobClient;
+import org.apache.hadoop.mapred.JobConf;
+
+import org.apache.hadoop.util.Tool;
+import org.apache.hadoop.util.ToolRunner;
+
+public class WCDriver extends Configured implements Tool {
+
+    public int run(String args[]) throws IOException {
+
+        if (args.length < 2) {
+            System.out.println("Please give valid input and output paths");
+            return -1;
+        }
+
+        JobConf conf = new JobConf(WCDriver.class);
+
+        FileInputFormat.setInputPaths(conf, new Path(args[0]));
+        FileOutputFormat.setOutputPath(conf, new Path(args[1]));
+
+        conf.setMapperClass(WCMapper.class);
+        conf.setReducerClass(WCReducer.class);
+
+        conf.setMapOutputKeyClass(Text.class);
+        conf.setMapOutputValueClass(IntWritable.class);
+
+        conf.setOutputKeyClass(Text.class);
+        conf.setOutputValueClass(IntWritable.class);
+
+        JobClient.runJob(conf);
+
+        return 0;
+    }
+
+    public static void main(String args[]) throws Exception {
+        int exitCode = ToolRunner.run(new WCDriver(), args);
+        System.out.println(exitCode);
+    }
+}
+
+
+WCMAPPER
+import java.io.IOException;
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+
+import org.apache.hadoop.mapred.MapReduceBase;
+import org.apache.hadoop.mapred.Mapper;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reporter;
+
+public class WCMapper extends MapReduceBase 
+implements Mapper<LongWritable, Text, Text, IntWritable> {
+
+    public void map(LongWritable key, Text value,
+                    OutputCollector<Text, IntWritable> output,
+                    Reporter rep) throws IOException {
+
+        String line = value.toString();
+        String[] words = line.split(" ");
+
+        for (String word : words) {
+            if (word.length() > 0) {
+                output.collect(new Text(word), new IntWritable(1));
+            }
+        }
+    }
+}
+
+REDUCER
+import java.io.IOException;
+import java.util.Iterator;
+
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.Text;
+
+import org.apache.hadoop.mapred.MapReduceBase;
+import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reducer;
+import org.apache.hadoop.mapred.Reporter;
+
+public class WCReducer extends MapReduceBase 
+implements Reducer<Text, IntWritable, Text, IntWritable> {
+
+    public void reduce(Text key, Iterator<IntWritable> values,
+                       OutputCollector<Text, IntWritable> output,
+                       Reporter rep) throws IOException {
+
+        int count = 0;
+
+        while (values.hasNext()) {
+            count += values.next().get();
+        }
+
+        output.collect(key, new IntWritable(count));
+    }
+}
+
+VM box → Hadoop training tool
+2. Select hadoop user
+3. Eclipse → File → New → Java Project → project name: wordcount
+4. Right click on word count → New → Class
+    * WCDriver
+    * WCMapper
+    * WCReducer
+5. WCDriver
+    * Write code
+    * Right click on word count → Build path → Configure → Add external jar
+    * On left side click on “hadoop”
+    * Right side double click on training
+    * Double click on CDH → double click on hadoop-2.0
+    * share → hadoop → common → 1st option of 2.0
+6. wordcount → build path → configure → add jar → mapreduce → 3rd option (client core) → OK
+7. wordcount → Export → jar file → Next
+8. /home/hadoop/wc.jar
+    [Jar file → Address] → OK
+9. Click Terminal icon on top
+    start-all.sh
+    jps (give programming space)
+10. vi AIML.txt
+
+* Write repetitive words
+* Esc shift + semicolon
+* wq + Enter (exiting)
+
+11. hadoop fs -put AIML.txt AIML.txt
+12. hadoop jar wc.jar WCDriver AIML.txt AIMLOutput
+13. hadoop fs -cat AIMLOutput/part-00000
+
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, FloatType
+spark=SparkSession.builder.appName("fifa").getOrCreate()
+schema=StructType([
+    StructField("team", StringType(), True),
+    StructField("name", StringType(), True),
+    StructField("position", StringType(), True),
+    StructField("age", IntegerType(), True),
+    StructField("overall", IntegerType(), True),
+    StructField("potential", IntegerType(), True),
+])
+file_path=""
+fifa_df=spark.read.csv(file_path, header=True, schema=schema)
+fifa_df.show()
+fifa_df.select("potential").show()
+spark.stop()
+
+from pyspark.sql import SparkSession
+
+spark=SparkSession.builder.appName("word count").getOrCreate()
+text=spark.sparkContext.parallelize(["hi chandu","hi big data","hi cloud computing and big data"])
+words=text.flatMap(lambda line: line.split(" "))
+pairs=words.map(lambda word: (word, 1))
+counts=pairs.reduceByKey(lambda x,y :x+y)
+print(counts.collect())
+spark.stop()
+
+nano wordcount.py
+Press CTRL + X
+Press Y
+Press Enter
+spark-submit wordcount.py
+python3 wordcount.py
+
+#include<stdio.h>
+#include<stdlib.h>
+
+int main()
+{  char data[1024];
+    FILE *fptr = fopen("c.txt", "w");
+    if (fptr == NULL)
+    { printf("error opening file");
+        exit(1);}
+    printf("enter content: ");
+    fgets(data, sizeof(data), stdin);
+    fprintf(fptr, "%s", data);   // <-- FIXED
+    fclose(fptr);
+    printf("data entered successfully");
+    return 0;
+}
+gcc -o ch ch.c     # compile
+./ch    
+
+#include<stdio.h>
+#include<stdlib.h>
+#include<unistd.h>
+
+float get_cpu_usage(){
+    FILE *fp = fopen("/proc/stat", "r");
+    if(fp == NULL) return -1;
+
+    long double a[4], b[4], loadavg;
+
+    fscanf(fp, "%*s%Lf%Lf%Lf%Lf", &a[0], &a[1], &a[2], &a[3]);
+    fclose(fp);
+
+    sleep(1);
+
+    fp = fopen("/proc/stat", "r");   // reopen
+    if(fp == NULL) return -1;
+
+    fscanf(fp, "%*s%Lf%Lf%Lf%Lf", &b[0], &b[1], &b[2], &b[3]);
+    fclose(fp);
+
+    loadavg = ((b[0]+b[1]+b[2])-(a[0]+a[1]+a[2])) /
+              ((b[0]+b[1]+b[2]+b[3])-(a[0]+a[1]+a[2]+a[3]));
+
+    return loadavg; }
+
+int main()
+{FILE *logs = fopen("cpu_usage.log", "w");
+    if(logs == NULL){
+        perror("error opening log");
+        return EXIT_FAILURE;
+    } for(int i = 0; i < 10; i++){
+        float usage = get_cpu_usage();
+        fprintf(logs, "CPU usage : %.2f%%\n", usage * 100);
+        printf("logged CPU usage : %.2f%%\n", usage * 100);
+ sleep(5);}
+    fclose(logs);
+    return 0;
+}
+
+
+Step1: Start the Cloud Analyst simulator by clicking on run.bat file. 
+Step 2: Once the simulator starts navigate to Configure Simulation tab. 
+Step 3: In Main Configuration tab, add four user bases by clicking add new button in 
+the User Bases table. 
+Step4: Set the memory to 1024 Mb in the Application Deployment Configuration 
+table. 
+Step 5: Set the number of VM’s to 25 in the Application Deployment Configuration. 
+Step 6: Navigate to Data Center Configuration tab and click on the Datacenter name 
+ie DC1. 
+Step 7: The physical hardware details of Data Center table is displayed where you 
+have to set the processor speed to 100 MIPS. 
+Step 8: Click on Save Configuration to save the simulation by naming it. 
+Step 9: Click Done. 
+Step 10: Click on Run Simulation to run the experiment. 
+Step 11: Wait for the results to be loaded. 
+Step 12: Note down the average, maximum and minimum response time for the user 
+bases & datacenter processing times. 
+Step 13: Observe & note the corresponding graphs.
